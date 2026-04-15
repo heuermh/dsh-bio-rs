@@ -1,7 +1,7 @@
 # dsh-bio-rs
 Rewrite of dishevelled.org bio in rust
 
-[![rewrites.bio - Follows best practice principles for rewriting bioinformatics tools](https://rewrites.bio/badges/rewrites-bio.svg)](https://rewrites.bio)
+[![rewrites.bio - Follows best practice principles for rewriting bioinformatics tools](https://rewrites.bio/badges/rewrites-bio-flat.svg)](https://rewrites.bio)
 
 
 ### Initial scope
