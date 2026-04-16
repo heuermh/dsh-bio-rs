@@ -24,6 +24,7 @@ commands:
 
 * Command line arguments via `clap`
 * TUI support via `rich_rust`, `richrs`, or `ratatui`
+* SQL templating via TBD
 * Bioinformatics formats support via `noodles` or `oxbow`
 * Parquet output format support via `duckdb-rs`
 * UDFs via `duckdb-rs` or TBD

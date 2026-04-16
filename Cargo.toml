@@ -1,0 +1,8 @@
+[package]
+name = "dsh-bio"
+version = "4.0.0-snapshot1"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.0", features = ["derive", "env", "cargo"] }
+noodles = { version = "0.109.0", features = ["fasta", "fastq", "vcf"] }
