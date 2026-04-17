@@ -21,57 +21,17 @@
     > http://www.opensource.org/licenses/lgpl-license.php
 
 */
-use std::path::PathBuf;
+mod cli;
 
-use clap::{Args, Parser, Subcommand};
+use clap::Parser;
 
-/// Rewrite of dishevelled.org bio in rust
-#[derive(Parser)]
-#[command(version, about, long_about = None, term_width = 120)]
-struct DshBio {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Args)]
-struct FastaToParquetArgs {
-    /// Input FASTA path [default <stdin>]
-    #[arg(short, long, value_name = "FASTA")]
-    input_fasta_path: Option<PathBuf>,
-
-    /// Output Parquet file, will be created as a directory, overwriting if necessary
-    #[arg(short, long, value_name = "PARQUET")]
-    output_parquet_file: PathBuf,
-
-    /// Input FASTA alphabet { dna, protein }
-    #[arg(short = 'e', long, default_value_t = String::from("dna"))]
-    alphabet: String,
-
-    /// Row group size
-    #[arg(short = 'g', long, default_value_t = 122880)]
-    row_group_size: u64,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Convert DNA or protein sequences in FASTA format to Parquet format
-    FastaToParquet(FastaToParquetArgs),
-
-    /// Convert DNA sequences in FASTQ format to Parquet format
-    FastqToParquet {
-        // empty
-    },
-    /// Convert variants in VCF format to Parquet format
-    VcfToParquet {
-        // empty
-    },
-}
+use cli::{Cli, Command};
 
 fn main() {
-    let dsh = DshBio::parse();
+    let cli = Cli::parse();
 
-    match &dsh.command {
-        Commands::FastaToParquet(args) => match &args.input_fasta_path {
+    match &cli.command {
+        Command::FastaToParquet(args) => match &args.input_fasta_path {
             Some(p) => println!(
                 "FASTA to Parquet, {} {} {} {}",
                 p.display(),
@@ -87,10 +47,10 @@ fn main() {
                 args.row_group_size
             ),
         },
-        Commands::FastqToParquet {} => {
+        Command::FastqToParquet {} => {
             println!("FASTQ to Parquet");
         }
-        Commands::VcfToParquet {} => {
+        Command::VcfToParquet {} => {
             println!("VCF to Parquet");
         }
     }
