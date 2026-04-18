@@ -22,6 +22,7 @@
 
 */
 mod cli;
+mod fasta_to_parquet;
 
 use clap::Parser;
 
@@ -30,23 +31,15 @@ use cli::{Cli, Command};
 fn main() {
     let cli = Cli::parse();
 
-    match &cli.command {
-        Command::FastaToParquet(args) => match &args.input_fasta_path {
-            Some(p) => println!(
-                "FASTA to Parquet, {} {} {} {}",
-                p.display(),
-                args.output_parquet_file.display(),
+    match cli.command {
+        Command::FastaToParquet(args) => {
+            let _result = fasta_to_parquet::run(
+                args.input_fasta_path.unwrap(),
+                args.output_parquet_file,
                 args.alphabet,
-                args.row_group_size
-            ),
-            _ => println!(
-                "FASTA to Parquet, {} {} {} {}",
-                "<stdin>",
-                args.output_parquet_file.display(),
-                args.alphabet,
-                args.row_group_size
-            ),
-        },
+                args.row_group_size,
+            );
+        }
         Command::FastqToParquet {} => {
             println!("FASTQ to Parquet");
         }

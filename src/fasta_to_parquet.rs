@@ -21,24 +21,61 @@
     > http://www.opensource.org/licenses/lgpl-license.php
 
 */
-
-use std::{env, io};
+use std::error::Error;
+use std::path::PathBuf;
 
 use bstr::ByteSlice;
-use noodles_fasta as fasta;
 
-fn main() -> io::Result<()> {
-    let src = env::args().nth(1).expect("missing src");
+use duckdb::{Connection, DropBehavior, params};
 
-    let mut reader = fasta::io::reader::Builder.build_from_path(src)?;
+use noodles::fasta;
 
-    for result in reader.records() {
-        let record = result?;
-        let name = record.name().as_bstr();
-        let description = record.description().as_bstr();
-        let length = record.sequence().len();
-        println!("{name}\t{description}\t{length}");
+pub fn run(
+    input_fasta_path: PathBuf,
+    output_parquet_file: PathBuf,
+    alphabet: String,
+    row_group_size: u64,
+) -> Result<(), Box<dyn Error>> {
+
+    let mut db = Connection::open_in_memory()?;
+
+    // initialize parquet extension
+    db.execute_batch("INSTALL parquet; LOAD parquet;")?;
+
+    // create sequence table
+    let create_table_sql = "CREATE TABLE sequences (name VARCHAR, description VARCHAR, sequence VARCHAR, length INTEGER, alphabet VARCHAR)";
+    db.execute_batch(create_table_sql)?;
+
+    {
+        // start transaction for appender
+        let mut tx = db.transaction()?;
+        tx.set_drop_behavior(DropBehavior::Commit);
+
+        // create appender
+        let mut appender = tx.appender("sequences")?;
+
+        // create fasta reader
+        let mut reader = fasta::io::reader::Builder.build_from_path(input_fasta_path)?;
+
+        // append each fasta record
+        for result in reader.records() {
+            let record = result?;
+            let name = record.name();
+            let description = record.description().map(|s| s.to_str_lossy());
+            let sequence = record.sequence().as_ref();
+            let length = sequence.len();
+
+            appender.append_row(params![name, description, sequence, length, alphabet])?;
+        }
     }
+
+    // copy to parquet
+    let copy_sql = format!(
+        "COPY sequences TO '{}' (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
+        output_parquet_file.to_string_lossy(),
+        row_group_size
+    );
+    db.execute_batch(&copy_sql)?;
 
     Ok(())
 }
