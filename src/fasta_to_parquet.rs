@@ -80,7 +80,10 @@ pub fn run(
         row_group_size
     );
 
-    info!("Copying sequences to {} in Parquet format", output_parquet_file.display());
+    info!(
+        "Copying sequences to {} in Parquet format",
+        output_parquet_file.display()
+    );
     db.execute_batch(&copy_sql)?;
 
     Ok(())

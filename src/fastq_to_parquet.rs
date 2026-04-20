@@ -21,31 +21,76 @@
     > http://www.opensource.org/licenses/lgpl-license.php
 
 */
-
-use std::{
-    env,
-    fs::File,
-    io::{self, BufReader},
-};
+use std::error::Error;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::PathBuf;
 
 use bstr::ByteSlice;
-use noodles_fastq as fastq;
 
-fn main() -> io::Result<()> {
-    let src = env::args().nth(1).expect("missing src");
+use duckdb::{Connection, DropBehavior, params};
 
-    let mut reader = File::open(src)
-        .map(BufReader::new)
-        .map(fastq::io::Reader::new)?;
+use noodles::fastq;
 
-    for result in reader.records() {
-        let record = result?;
-        let name = record.name().as_bstr();
-        let definition = record.definition().as_bstr();
-        let sequence_length = record.sequence().len();
-        let quality_scores_length = record.quality_scores().len();
-        println!("{name}\t{definition}\t{sequence_length}\t{quality_scores_length}");
+use log::info;
+
+pub fn run(
+    input_fastq_path: PathBuf,
+    output_parquet_file: PathBuf,
+    row_group_size: u64,
+) -> Result<(), Box<dyn Error>> {
+    let mut db = Connection::open_in_memory()?;
+
+    // initialize parquet extension
+    info!("Initializing duckdb parquet extension");
+    db.execute_batch("INSTALL parquet; LOAD parquet;")?;
+
+    // create sequence table
+    info!("Creating sequence table");
+    let create_table_sql = "CREATE TABLE sequences (name VARCHAR, description VARCHAR, sequence VARCHAR, quality VARCHAR, length INTEGER, alphabet VARCHAR)";
+    db.execute_batch(create_table_sql)?;
+
+    info!("Reading sequences from {}", input_fastq_path.display());
+    {
+        // start transaction for appender
+        let mut tx = db.transaction()?;
+        tx.set_drop_behavior(DropBehavior::Commit);
+
+        // create appender
+        let mut appender = tx.appender("sequences")?;
+
+        // create fastq reader
+        // todo: no Builder in fastq module
+        //let mut reader = fastq::io::reader::Builder.build_from_path(input_fastq_path)?;
+        let mut reader = File::open(input_fastq_path)
+            .map(BufReader::new)
+            .map(fastq::io::Reader::new)?;
+
+        // append each fastq record
+        for result in reader.records() {
+            let record = result?;
+            let name = record.name().to_str_lossy();
+            let description = record.description().to_str_lossy();
+            let sequence = record.sequence();
+            let quality = record.quality_scores();
+            let length = sequence.len();
+
+            appender.append_row(params![name, description, sequence, quality, length, "dna"])?;
+        }
     }
+
+    // copy to parquet
+    let copy_sql = format!(
+        "COPY sequences TO '{}' (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
+        output_parquet_file.to_string_lossy(),
+        row_group_size
+    );
+
+    info!(
+        "Copying sequences to {} in Parquet format",
+        output_parquet_file.display()
+    );
+    db.execute_batch(&copy_sql)?;
 
     Ok(())
 }

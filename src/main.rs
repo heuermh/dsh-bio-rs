@@ -23,6 +23,7 @@
 */
 mod cli;
 mod fasta_to_parquet;
+mod fastq_to_parquet;
 
 use clap::Parser;
 
@@ -53,8 +54,12 @@ fn main() {
                 args.row_group_size,
             );
         }
-        Command::FastqToParquet {} => {
-            println!("FASTQ to Parquet");
+        Command::FastqToParquet(args) => {
+            let _result = fastq_to_parquet::run(
+                args.input_fastq_path.unwrap(),
+                args.output_parquet_file,
+                args.row_group_size,
+            );
         }
         Command::VcfToParquet {} => {
             println!("VCF to Parquet");
