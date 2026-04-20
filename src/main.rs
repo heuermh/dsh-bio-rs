@@ -28,8 +28,21 @@ use clap::Parser;
 
 use cli::{Cli, Command};
 
+use env_logger::Env;
+
 fn main() {
     let cli = Cli::parse();
+
+    // map log filter level from `--verbose` count
+    let filter = match cli.verbose {
+        0 => "warn",
+        1 => "info",
+        2 => "debug",
+        _ => "trace",
+    };
+
+    // override with RUST_LOG environment variable, if present
+    env_logger::Builder::from_env(Env::default().default_filter_or(filter)).init();
 
     match cli.command {
         Command::FastaToParquet(args) => {

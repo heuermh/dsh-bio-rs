@@ -30,22 +30,26 @@ use duckdb::{Connection, DropBehavior, params};
 
 use noodles::fasta;
 
+use log::info;
+
 pub fn run(
     input_fasta_path: PathBuf,
     output_parquet_file: PathBuf,
     alphabet: String,
     row_group_size: u64,
 ) -> Result<(), Box<dyn Error>> {
-
     let mut db = Connection::open_in_memory()?;
 
     // initialize parquet extension
+    info!("Initializing duckdb parquet extension");
     db.execute_batch("INSTALL parquet; LOAD parquet;")?;
 
     // create sequence table
+    info!("Creating sequence table");
     let create_table_sql = "CREATE TABLE sequences (name VARCHAR, description VARCHAR, sequence VARCHAR, length INTEGER, alphabet VARCHAR)";
     db.execute_batch(create_table_sql)?;
 
+    info!("Reading sequences from {}", input_fasta_path.display());
     {
         // start transaction for appender
         let mut tx = db.transaction()?;
@@ -75,6 +79,8 @@ pub fn run(
         output_parquet_file.to_string_lossy(),
         row_group_size
     );
+
+    info!("Copying sequences to {} in Parquet format", output_parquet_file.display());
     db.execute_batch(&copy_sql)?;
 
     Ok(())
