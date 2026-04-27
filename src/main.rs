@@ -24,6 +24,7 @@
 mod cli;
 mod fasta_to_parquet;
 mod fastq_to_parquet;
+mod vcf_to_parquet;
 
 use clap::Parser;
 
@@ -45,6 +46,7 @@ fn main() {
     // override with RUST_LOG environment variable, if present
     env_logger::Builder::from_env(Env::default().default_filter_or(filter)).init();
 
+    // todo: accept None or - for stdin
     match cli.command {
         Command::FastaToParquet(args) => {
             let _result = fasta_to_parquet::run(
@@ -61,8 +63,12 @@ fn main() {
                 args.row_group_size,
             );
         }
-        Command::VcfToParquet {} => {
-            println!("VCF to Parquet");
+        Command::VcfToParquet(args) => {
+            let _result = vcf_to_parquet::run(
+                args.input_vcf_path.unwrap(),
+                args.output_parquet_file,
+                args.row_group_size,
+            );
         }
     }
 }

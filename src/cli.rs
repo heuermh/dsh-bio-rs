@@ -46,9 +46,7 @@ pub enum Command {
     FastqToParquet(FastqToParquetArgs),
 
     /// Convert variants in VCF format to Parquet format
-    VcfToParquet {
-        // empty
-    },
+    VcfToParquet(VcfToParquetArgs),
 }
 
 #[derive(Args)]
@@ -75,6 +73,21 @@ pub struct FastqToParquetArgs {
     /// Input FASTQ path [default <stdin>]
     #[arg(short, long, value_name = "FASTQ")]
     pub input_fastq_path: Option<PathBuf>,
+
+    /// Output Parquet file, will be created as a directory, overwriting if necessary
+    #[arg(short, long, value_name = "PARQUET")]
+    pub output_parquet_file: PathBuf,
+
+    /// Row group size
+    #[arg(short = 'g', long, default_value_t = 122880)]
+    pub row_group_size: u64,
+}
+
+#[derive(Args)]
+pub struct VcfToParquetArgs {
+    /// Input VCF path [default <stdin>]
+    #[arg(short, long, value_name = "VCF")]
+    pub input_vcf_path: Option<PathBuf>,
 
     /// Output Parquet file, will be created as a directory, overwriting if necessary
     #[arg(short, long, value_name = "PARQUET")]
