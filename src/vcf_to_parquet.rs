@@ -78,9 +78,9 @@ pub fn run(
             let reference = record.reference_bases();
             let alt: Option<String> = None;
             let qual: Option<String> = None;
-            let mut filters_applied: Vec<u8> = Vec::new();
-            let mut filters_passed: Vec<u8> = Vec::new();
-            let mut filters_failed: Vec<u8> = Vec::new();
+            let filters_applied: Vec<u8> = Vec::new();
+            let filters_passed: Vec<u8> = Vec::new();
+            let filters_failed: Vec<u8> = Vec::new();
 
             appender.append_row(params![chrom, pos, reference, alt, qual, filters_applied, filters_passed, filters_failed])?;
         }
