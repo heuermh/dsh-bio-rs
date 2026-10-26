@@ -40,10 +40,6 @@ pub fn run(
 ) -> Result<(), Box<dyn Error>> {
     let mut db = Connection::open_in_memory()?;
 
-    // initialize parquet extension
-    info!("Initializing duckdb parquet extension");
-    db.execute_batch("INSTALL parquet; LOAD parquet;")?;
-
     // create sequence table
     info!("Creating sequence table");
     let create_table_sql = "CREATE TABLE sequences (name VARCHAR, description VARCHAR, sequence VARCHAR, length INTEGER, alphabet VARCHAR)";

@@ -39,10 +39,6 @@ pub fn run(
 ) -> Result<(), Box<dyn Error>> {
     let mut db = Connection::open_in_memory()?;
 
-    // initialize parquet extension
-    info!("Initializing duckdb parquet extension");
-    db.execute_batch("INSTALL parquet; LOAD parquet;")?;
-
     // create variants table
     info!("Creating variants table");
     let create_table_sql = "CREATE TABLE variants (chrom VARCHAR, pos LONG, ref VARCHAR, alt VARCHAR, qual DOUBLE, filters_applied BOOLEAN, filters_passed BOOLEAN, filters_failed VARCHAR[]";
