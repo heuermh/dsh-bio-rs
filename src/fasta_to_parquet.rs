@@ -60,14 +60,17 @@ pub fn run(
         // append each fasta record
         for result in reader.records() {
             let record = result?;
-            let name = record.name();
+            let name = record.name().to_str()?;
             let description = record.description().map(|s| s.to_str_lossy());
-            let sequence = record.sequence().as_ref();
+            let sequence = record.sequence().as_ref().to_str()?;
             let length = sequence.len();
 
             appender.append_row(params![name, description, sequence, length, alphabet])?;
         }
     }
+
+    // allow parallel, lower-memory copy; PER_THREAD_OUTPUT does not preserve order anyway
+    db.execute_batch("SET preserve_insertion_order = false")?;
 
     // copy to parquet
     let copy_sql = format!(

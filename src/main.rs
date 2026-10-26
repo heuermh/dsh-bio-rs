@@ -26,13 +26,15 @@ mod fasta_to_parquet;
 mod fastq_to_parquet;
 mod vcf_to_parquet;
 
+use std::error::Error;
+
 use clap::Parser;
 
 use cli::{Cli, Command};
 
 use env_logger::Env;
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
     // map log filter level from `--verbose` count
@@ -49,26 +51,28 @@ fn main() {
     // todo: accept None or - for stdin
     match cli.command {
         Command::FastaToParquet(args) => {
-            let _result = fasta_to_parquet::run(
+            fasta_to_parquet::run(
                 args.input_fasta_path.unwrap(),
                 args.output_parquet_file,
                 args.alphabet,
                 args.row_group_size,
-            );
+            )?;
         }
         Command::FastqToParquet(args) => {
-            let _result = fastq_to_parquet::run(
+            fastq_to_parquet::run(
                 args.input_fastq_path.unwrap(),
                 args.output_parquet_file,
                 args.row_group_size,
-            );
+            )?;
         }
         Command::VcfToParquet(args) => {
-            let _result = vcf_to_parquet::run(
+            vcf_to_parquet::run(
                 args.input_vcf_path.unwrap(),
                 args.output_parquet_file,
                 args.row_group_size,
-            );
+            )?;
         }
     }
+
+    Ok(())
 }

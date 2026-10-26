@@ -67,13 +67,16 @@ pub fn run(
             let record = result?;
             let name = record.name().to_str_lossy();
             let description = record.description().to_str_lossy();
-            let sequence = record.sequence();
-            let quality = record.quality_scores();
+            let sequence = record.sequence().to_str()?;
+            let quality = record.quality_scores().to_str()?;
             let length = sequence.len();
 
             appender.append_row(params![name, description, sequence, quality, length, "dna"])?;
         }
     }
+
+    // allow parallel, lower-memory copy; PER_THREAD_OUTPUT does not preserve order anyway
+    db.execute_batch("SET preserve_insertion_order = false")?;
 
     // copy to parquet
     let copy_sql = format!(
