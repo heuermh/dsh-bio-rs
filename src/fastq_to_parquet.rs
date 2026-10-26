@@ -24,22 +24,25 @@
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bstr::ByteSlice;
 
-use duckdb::{Connection, DropBehavior, params};
+use duckdb::{DropBehavior, params};
 
 use noodles::fastq;
 
 use log::info;
 
+use crate::db;
+
 pub fn run(
     input_fastq_path: PathBuf,
     output_parquet_file: PathBuf,
     row_group_size: u64,
+    temp_dir: Option<&Path>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut db = Connection::open_in_memory()?;
+    let mut db = db::open(temp_dir)?;
 
     // create sequence table
     info!("Creating sequence table");

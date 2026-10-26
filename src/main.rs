@@ -22,6 +22,7 @@
 
 */
 mod cli;
+mod db;
 mod fasta_to_parquet;
 mod fastq_to_parquet;
 mod vcf_to_parquet;
@@ -56,6 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 args.output_parquet_file,
                 args.alphabet,
                 args.row_group_size,
+                args.temp_dir.as_deref(),
             )?;
         }
         Command::FastqToParquet(args) => {
@@ -63,6 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 args.input_fastq_path.unwrap(),
                 args.output_parquet_file,
                 args.row_group_size,
+                args.temp_dir.as_deref(),
             )?;
         }
         Command::VcfToParquet(args) => {
@@ -70,6 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 args.input_vcf_path.unwrap(),
                 args.output_parquet_file,
                 args.row_group_size,
+                args.temp_dir.as_deref(),
             )?;
         }
     }

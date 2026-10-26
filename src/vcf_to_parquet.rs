@@ -22,26 +22,29 @@
 
 */
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 //use bstr::ByteSlice;
 
-use duckdb::{Connection, DropBehavior, params};
+use duckdb::{DropBehavior, params};
 
 use noodles::vcf;
 
 use log::info;
 
+use crate::db;
+
 pub fn run(
     input_vcf_path: PathBuf,
     output_parquet_file: PathBuf,
     row_group_size: u64,
+    temp_dir: Option<&Path>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut db = Connection::open_in_memory()?;
+    let mut db = db::open(temp_dir)?;
 
     // create variants table
     info!("Creating variants table");
-    let create_table_sql = "CREATE TABLE variants (chrom VARCHAR, pos LONG, ref VARCHAR, alt VARCHAR, qual DOUBLE, filters_applied BOOLEAN, filters_passed BOOLEAN, filters_failed VARCHAR[]";
+    let create_table_sql = "CREATE TABLE variants (chrom VARCHAR, pos LONG, ref VARCHAR, alt VARCHAR, qual DOUBLE, filters_applied BOOLEAN, filters_passed BOOLEAN, filters_failed VARCHAR[])";
     db.execute_batch(create_table_sql)?;
 
     info!("Reading variants from {}", input_vcf_path.display());
@@ -67,9 +70,9 @@ pub fn run(
             let reference = record.reference_bases();
             let alt: Option<String> = None;
             let qual: Option<String> = None;
-            let filters_applied: Vec<u8> = Vec::new();
-            let filters_passed: Vec<u8> = Vec::new();
-            let filters_failed: Vec<u8> = Vec::new();
+            let filters_applied: Option<bool> = None;
+            let filters_passed: Option<bool> = None;
+            let filters_failed: Option<String> = None;
 
             appender.append_row(params![chrom, pos, reference, alt, qual, filters_applied, filters_passed, filters_failed])?;
         }

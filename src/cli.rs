@@ -66,6 +66,10 @@ pub struct FastaToParquetArgs {
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
+
+    /// Temporary directory, for spilling inputs larger than memory
+    #[arg(short = 't', long, value_name = "DIR")]
+    pub temp_dir: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -81,6 +85,10 @@ pub struct FastqToParquetArgs {
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
+
+    /// Temporary directory, for spilling inputs larger than memory
+    #[arg(short = 't', long, value_name = "DIR")]
+    pub temp_dir: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -96,4 +104,8 @@ pub struct VcfToParquetArgs {
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
+
+    /// Temporary directory, for spilling inputs larger than memory
+    #[arg(short = 't', long, value_name = "DIR")]
+    pub temp_dir: Option<PathBuf>,
 }
