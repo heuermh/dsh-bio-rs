@@ -62,9 +62,9 @@ pub fn run(
             .map(BufReader::new)
             .map(fastq::io::Reader::new)?;
 
-        // append each fastq record
-        for result in reader.records() {
-            let record = result?;
+        // append each fastq record, reusing a single record buffer
+        let mut record = fastq::Record::default();
+        while reader.read_record(&mut record)? != 0 {
             let name = record.name().to_str_lossy();
             let description = record.description().to_str_lossy();
             let sequence = record.sequence().to_str()?;
