@@ -22,8 +22,6 @@
 
 */
 use std::error::Error;
-use std::fs::File;
-use std::io::BufReader;
 use std::path::PathBuf;
 
 //use bstr::ByteSlice;
@@ -60,12 +58,7 @@ pub fn run(
         let mut appender = tx.appender("variants")?;
 
         // create vcf reader
-        // todo: no Builder in vcf module
-        //let mut reader = vcf::io::reader::Builder.build_from_path(input_fasta_path)?;
-        let mut reader = File::open(input_vcf_path)
-            .map(BufReader::new)
-            .map(vcf::io::Reader::new)?;
-
+        let mut reader = vcf::io::reader::Builder::default().build_from_path(input_vcf_path)?;
         reader.read_header()?;
 
         // append each vcf record
