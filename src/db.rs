@@ -33,7 +33,6 @@ use tempfile::TempDir;
 
 /// DuckDB connection, optionally backed by a database file in a temporary directory.
 pub struct Database {
-    // field order matters: the connection must be dropped before its temporary directory is removed
     connection: Connection,
     _temp_dir: Option<TempDir>,
 }
@@ -52,8 +51,6 @@ impl DerefMut for Database {
     }
 }
 
-/// Open an in-memory database, or if `temp_dir` is specified, a database file in a new
-/// temporary directory under `temp_dir`, removed when the returned database is dropped.
 pub fn open(temp_dir: Option<&Path>) -> Result<Database, Box<dyn Error>> {
     match temp_dir {
         None => Ok(Database {

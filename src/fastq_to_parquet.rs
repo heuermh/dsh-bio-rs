@@ -78,7 +78,7 @@ pub fn run(
         }
     }
 
-    // allow parallel, lower-memory copy; PER_THREAD_OUTPUT does not preserve order anyway
+    // allow parallel, lower-memory copy
     db.execute_batch("SET preserve_insertion_order = false")?;
 
     // copy to parquet

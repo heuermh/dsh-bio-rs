@@ -24,8 +24,6 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-//use bstr::ByteSlice;
-
 use duckdb::{DropBehavior, params};
 
 use noodles::vcf;
@@ -77,6 +75,9 @@ pub fn run(
             appender.append_row(params![chrom, pos, reference, alt, qual, filters_applied, filters_passed, filters_failed])?;
         }
     }
+
+    // allow parallel, lower-memory copy
+    db.execute_batch("SET preserve_insertion_order = false")?;
 
     // copy to parquet
     let copy_sql = format!(
