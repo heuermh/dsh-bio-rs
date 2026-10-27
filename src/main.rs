@@ -22,10 +22,14 @@
 
 */
 mod cli;
-mod db;
 mod fasta_to_parquet;
+mod fasta_to_partitioned_parquet;
 mod fastq_to_parquet;
+mod fastq_to_partitioned_parquet;
+mod input;
+mod sql;
 mod vcf_to_parquet;
+mod vcf_to_partitioned_parquet;
 
 use std::error::Error;
 
@@ -57,7 +61,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 args.output_parquet_file,
                 args.alphabet,
                 args.row_group_size,
-                args.temp_dir.as_deref(),
+            )?;
+        }
+        Command::FastaToPartitionedParquet(args) => {
+            fasta_to_partitioned_parquet::run(
+                args.input_fasta_path.unwrap(),
+                args.output_parquet_file,
+                args.alphabet,
+                args.row_group_size,
+                args.partition_size,
             )?;
         }
         Command::FastqToParquet(args) => {
@@ -65,7 +77,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 args.input_fastq_path.unwrap(),
                 args.output_parquet_file,
                 args.row_group_size,
-                args.temp_dir.as_deref(),
+            )?;
+        }
+        Command::FastqToPartitionedParquet(args) => {
+            fastq_to_partitioned_parquet::run(
+                args.input_fastq_path.unwrap(),
+                args.output_parquet_file,
+                args.row_group_size,
+                args.partition_size,
             )?;
         }
         Command::VcfToParquet(args) => {
@@ -73,7 +92,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 args.input_vcf_path.unwrap(),
                 args.output_parquet_file,
                 args.row_group_size,
-                args.temp_dir.as_deref(),
+            )?;
+        }
+        Command::VcfToPartitionedParquet(args) => {
+            vcf_to_partitioned_parquet::run(
+                args.input_vcf_path.unwrap(),
+                args.output_parquet_file,
+                args.row_group_size,
+                args.partition_size,
             )?;
         }
     }

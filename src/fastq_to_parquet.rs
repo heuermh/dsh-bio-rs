@@ -22,27 +22,24 @@
 
 */
 use std::error::Error;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use bstr::ByteSlice;
 
-use duckdb::{DropBehavior, params};
+use duckdb::{Connection, DropBehavior, params};
 
 use noodles::fastq;
 
 use log::info;
 
-use crate::db;
+use crate::{input, sql};
 
 pub fn run(
     input_fastq_path: PathBuf,
     output_parquet_file: PathBuf,
     row_group_size: u64,
-    temp_dir: Option<&Path>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut db = db::open(temp_dir)?;
+    let mut db = Connection::open_in_memory()?;
 
     // create sequence table
     info!("Creating sequence table");
@@ -59,11 +56,7 @@ pub fn run(
         let mut appender = tx.appender("sequences")?;
 
         // create fastq reader
-        // todo: no Builder in fastq module
-        //let mut reader = fastq::io::reader::Builder.build_from_path(input_fastq_path)?;
-        let mut reader = File::open(input_fastq_path)
-            .map(BufReader::new)
-            .map(fastq::io::Reader::new)?;
+        let mut reader = fastq::io::Reader::new(input::open(&input_fastq_path)?);
 
         // append each fastq record, reusing a single record buffer
         let mut record = fastq::Record::default();
@@ -83,8 +76,8 @@ pub fn run(
 
     // copy to parquet
     let copy_sql = format!(
-        "COPY sequences TO '{}' (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
-        output_parquet_file.to_string_lossy(),
+        "COPY sequences TO {} (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
+        sql::string_literal(&output_parquet_file)?,
         row_group_size
     );
 

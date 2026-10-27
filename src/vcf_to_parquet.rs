@@ -22,23 +22,22 @@
 
 */
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use duckdb::{DropBehavior, params};
+use duckdb::{Connection, DropBehavior, params};
 
 use noodles::vcf;
 
 use log::info;
 
-use crate::db;
+use crate::{input, sql};
 
 pub fn run(
     input_vcf_path: PathBuf,
     output_parquet_file: PathBuf,
     row_group_size: u64,
-    temp_dir: Option<&Path>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut db = db::open(temp_dir)?;
+    let mut db = Connection::open_in_memory()?;
 
     // create variants table
     info!("Creating variants table");
@@ -55,14 +54,13 @@ pub fn run(
         let mut appender = tx.appender("variants")?;
 
         // create vcf reader
-        let mut reader = vcf::io::reader::Builder::default().build_from_path(input_vcf_path)?;
+        let mut reader = vcf::io::Reader::new(input::open(&input_vcf_path)?);
         reader.read_header()?;
 
         // append each vcf record
         for result in reader.records() {
             let record = result?;
             let position = record.variant_start().transpose()?;
-
             let chrom = record.reference_sequence_name();
             let pos = position.map(usize::from).unwrap_or_default();
             let reference = record.reference_bases();
@@ -72,7 +70,16 @@ pub fn run(
             let filters_passed: Option<bool> = None;
             let filters_failed: Option<String> = None;
 
-            appender.append_row(params![chrom, pos, reference, alt, qual, filters_applied, filters_passed, filters_failed])?;
+            appender.append_row(params![
+                chrom,
+                pos,
+                reference,
+                alt,
+                qual,
+                filters_applied,
+                filters_passed,
+                filters_failed
+            ])?;
         }
     }
 
@@ -81,8 +88,8 @@ pub fn run(
 
     // copy to parquet
     let copy_sql = format!(
-        "COPY variants TO '{}' (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
-        output_parquet_file.to_string_lossy(),
+        "COPY variants TO {} (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
+        sql::string_literal(&output_parquet_file)?,
         row_group_size
     );
 

@@ -42,11 +42,20 @@ pub enum Command {
     /// Convert DNA or protein sequences in FASTA format to Parquet format
     FastaToParquet(FastaToParquetArgs),
 
+    /// Convert DNA or protein sequences in FASTA format to partitioned Parquet format
+    FastaToPartitionedParquet(FastaToPartitionedParquetArgs),
+
     /// Convert DNA sequences in FASTQ format to Parquet format
     FastqToParquet(FastqToParquetArgs),
 
+    /// Convert DNA sequences in FASTQ format to partitioned Parquet format
+    FastqToPartitionedParquet(FastqToPartitionedParquetArgs),
+
     /// Convert variants in VCF format to Parquet format
     VcfToParquet(VcfToParquetArgs),
+
+    /// Convert variants in VCF format to partitioned Parquet format
+    VcfToPartitionedParquet(VcfToPartitionedParquetArgs),
 }
 
 #[derive(Args)]
@@ -66,10 +75,29 @@ pub struct FastaToParquetArgs {
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
+}
 
-    /// Temporary directory, for spilling inputs larger than memory
-    #[arg(short = 't', long, value_name = "DIR")]
-    pub temp_dir: Option<PathBuf>,
+#[derive(Args)]
+pub struct FastaToPartitionedParquetArgs {
+    /// Input FASTA path [default <stdin>]
+    #[arg(short, long, value_name = "FASTA")]
+    pub input_fasta_path: Option<PathBuf>,
+
+    /// Output Parquet file, will be created as a directory, overwriting if necessary
+    #[arg(short, long, value_name = "PARQUET")]
+    pub output_parquet_file: PathBuf,
+
+    /// Input FASTA alphabet { dna, protein }
+    #[arg(short = 'e', long, default_value_t = String::from("dna"))]
+    pub alphabet: String,
+
+    /// Row group size
+    #[arg(short = 'g', long, default_value_t = 122880)]
+    pub row_group_size: u64,
+
+    /// Partition size, in number of rows
+    #[arg(short = 'p', long, default_value_t = 1228800, value_parser = clap::value_parser!(u64).range(1..))]
+    pub partition_size: u64,
 }
 
 #[derive(Args)]
@@ -85,10 +113,25 @@ pub struct FastqToParquetArgs {
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
+}
 
-    /// Temporary directory, for spilling inputs larger than memory
-    #[arg(short = 't', long, value_name = "DIR")]
-    pub temp_dir: Option<PathBuf>,
+#[derive(Args)]
+pub struct FastqToPartitionedParquetArgs {
+    /// Input FASTQ path [default <stdin>]
+    #[arg(short, long, value_name = "FASTQ")]
+    pub input_fastq_path: Option<PathBuf>,
+
+    /// Output Parquet file, will be created as a directory, overwriting if necessary
+    #[arg(short, long, value_name = "PARQUET")]
+    pub output_parquet_file: PathBuf,
+
+    /// Row group size
+    #[arg(short = 'g', long, default_value_t = 122880)]
+    pub row_group_size: u64,
+
+    /// Partition size, in number of rows
+    #[arg(short = 'p', long, default_value_t = 1228800, value_parser = clap::value_parser!(u64).range(1..))]
+    pub partition_size: u64,
 }
 
 #[derive(Args)]
@@ -104,8 +147,23 @@ pub struct VcfToParquetArgs {
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
+}
 
-    /// Temporary directory, for spilling inputs larger than memory
-    #[arg(short = 't', long, value_name = "DIR")]
-    pub temp_dir: Option<PathBuf>,
+#[derive(Args)]
+pub struct VcfToPartitionedParquetArgs {
+    /// Input VCF path [default <stdin>]
+    #[arg(short, long, value_name = "VCF")]
+    pub input_vcf_path: Option<PathBuf>,
+
+    /// Output Parquet file, will be created as a directory, overwriting if necessary
+    #[arg(short, long, value_name = "PARQUET")]
+    pub output_parquet_file: PathBuf,
+
+    /// Row group size
+    #[arg(short = 'g', long, default_value_t = 122880)]
+    pub row_group_size: u64,
+
+    /// Partition size, in number of rows
+    #[arg(short = 'p', long, default_value_t = 1228800, value_parser = clap::value_parser!(u64).range(1..))]
+    pub partition_size: u64,
 }

@@ -22,26 +22,25 @@
 
 */
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use bstr::ByteSlice;
 
-use duckdb::{DropBehavior, params};
+use duckdb::{Connection, DropBehavior, params};
 
 use noodles::fasta;
 
 use log::info;
 
-use crate::db;
+use crate::{input, sql};
 
 pub fn run(
     input_fasta_path: PathBuf,
     output_parquet_file: PathBuf,
     alphabet: String,
     row_group_size: u64,
-    temp_dir: Option<&Path>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut db = db::open(temp_dir)?;
+    let mut db = Connection::open_in_memory()?;
 
     // create sequence table
     info!("Creating sequence table");
@@ -58,7 +57,7 @@ pub fn run(
         let mut appender = tx.appender("sequences")?;
 
         // create fasta reader
-        let mut reader = fasta::io::reader::Builder.build_from_path(input_fasta_path)?;
+        let mut reader = fasta::io::Reader::new(input::open(&input_fasta_path)?);
 
         // append each fasta record
         for result in reader.records() {
@@ -77,8 +76,8 @@ pub fn run(
 
     // copy to parquet
     let copy_sql = format!(
-        "COPY sequences TO '{}' (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
-        output_parquet_file.to_string_lossy(),
+        "COPY sequences TO {} (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
+        sql::string_literal(&output_parquet_file)?,
         row_group_size
     );
 
