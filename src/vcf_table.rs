@@ -23,7 +23,9 @@
 */
 use std::error::Error;
 
-use duckdb::types::Value;
+use duckdb::Appender;
+use duckdb::appender_params_from_iter;
+use duckdb::types::{ToSqlOutput, ValueRef};
 
 use noodles::vcf;
 
@@ -35,6 +37,10 @@ const PASS: &str = "PASS";
 const GT: &str = "GT";
 
 /// Variants table structure and row values for VCF records
+///
+/// To avoid building a list value per cell, which dominates appender time, each VARCHAR[] column
+/// is appended as raw VARCHAR text borrowed from the record, or NULL for an empty list, and split
+/// into a list when selecting from the table.
 pub struct VcfTable {
     info_fields: Vec<String>,
     info_columns: Vec<String>,
@@ -89,56 +95,77 @@ impl VcfTable {
         })
     }
 
-    /// Return the CREATE TABLE SQL for the specified table name
+    /// Return the CREATE TABLE SQL for the specified table name, with list columns as VARCHAR
     pub fn create_table_sql(&self, table: &str) -> String {
-        let alt_type = if self.multiallelic {
-            "VARCHAR[]"
-        } else {
-            "VARCHAR"
-        };
         let mut sql = format!(
-            "CREATE TABLE {} (chrom VARCHAR, pos LONG, ref VARCHAR, alt {}, qual DOUBLE, filters_applied BOOLEAN, filters_passed BOOLEAN, filters_failed VARCHAR[]",
-            table, alt_type
+            "CREATE TABLE {} (chrom VARCHAR, pos LONG, ref VARCHAR, alt VARCHAR, qual DOUBLE, filters_applied BOOLEAN, filters_passed BOOLEAN, filters_failed VARCHAR",
+            table
         );
         for column in self.info_columns.iter().chain(&self.sample_columns) {
             sql.push_str(", ");
             sql.push_str(&sql::identifier(column));
-            sql.push_str(" VARCHAR[]");
+            sql.push_str(" VARCHAR");
         }
         sql.push(')');
         sql
     }
 
-    /// Append the column values for the specified record to row
-    pub fn append_row_values(
+    /// Return the SELECT SQL for the specified table name, splitting list columns into VARCHAR[]
+    pub fn select_sql(&self, table: &str) -> String {
+        let alt = if self.multiallelic {
+            split_sql("alt", ',')
+        } else {
+            String::from("alt")
+        };
+        let mut sql = format!(
+            "SELECT chrom, pos, ref, {}, qual, filters_applied, filters_passed, {}",
+            alt,
+            split_sql("filters_failed", ';')
+        );
+        for column in self.info_columns.iter().chain(&self.sample_columns) {
+            sql.push_str(", ");
+            sql.push_str(&split_sql(&sql::identifier(column), ','));
+        }
+        sql.push_str(" FROM ");
+        sql.push_str(table);
+        sql
+    }
+
+    /// Append a row for the specified record
+    pub fn append_row(
         &self,
         record: &vcf::Record,
-        row: &mut Vec<Value>,
+        appender: &mut Appender<'_>,
     ) -> Result<(), Box<dyn Error>> {
+        // field wrappers must outlive the row, which borrows from them
+        let alternate_bases = record.alternate_bases();
+        let filters = record.filters();
+        let info = record.info();
+        let samples = record.samples();
+
+        let mut row: Vec<ToSqlOutput<'_>> =
+            Vec::with_capacity(8 + self.info_columns.len() + self.sample_columns.len());
+
         let position = record.variant_start().transpose()?;
         let pos = position.map(usize::from).unwrap_or_default();
-        row.push(Value::Text(record.reference_sequence_name().to_string()));
-        row.push(Value::BigInt(pos as i64));
-        row.push(Value::Text(record.reference_bases().to_string()));
+        row.push(text(record.reference_sequence_name()));
+        row.push(ToSqlOutput::Borrowed(ValueRef::BigInt(i64::try_from(pos)?)));
+        row.push(text(record.reference_bases()));
 
         // alternate alleles, one per row unless multiallelic
-        let alternate_bases = record.alternate_bases();
-        let alt = split(alternate_bases.as_ref(), ',');
+        let alt = alternate_bases.as_ref();
         if self.multiallelic {
-            row.push(list(alt));
+            row.push(list_text(alt));
+        } else if alt.contains(',') {
+            return Err(format!(
+                "multiallelic variants not supported without --multiallelic, found alternate alleles {} at {}:{}",
+                alt,
+                record.reference_sequence_name(),
+                pos
+            )
+            .into());
         } else {
-            match alt.as_slice() {
-                [] => row.push(Value::Text(String::new())),
-                [allele] => row.push(Value::Text(allele.to_string())),
-                _ => {
-                    return Err(format!(
-                            "multiallelic variants not supported without --multiallelic, found alternate alleles {} at {}:{}",
-                            alt.join(","),
-                            record.reference_sequence_name(),
-                            pos
-                        ).into());
-                }
-            }
+            row.push(text(alt));
         }
 
         // widen via the shortest decimal representation, so a QUAL of 29.6 stays 29.6
@@ -146,95 +173,97 @@ impl VcfTable {
             .quality_score()
             .transpose()?
             .map(|q| q.to_string().parse::<f64>().unwrap_or(f64::from(q)));
-        row.push(qual.map_or(Value::Null, Value::Double));
+        row.push(qual.map_or(NULL, |q| ToSqlOutput::Borrowed(ValueRef::Double(q))));
 
         // filters_applied, filters_passed, filters_failed
-        let filters = record.filters();
-        let filters = split(filters.as_ref(), ';');
-        let (applied, passed, failed) = match filters.as_slice() {
-            [] => (false, false, Vec::new()),
-            [PASS] => (true, true, Vec::new()),
-            _ => (true, false, filters),
+        let (applied, passed, failed) = match filters.as_ref() {
+            "" | MISSING => (false, false, NULL),
+            PASS => (true, true, NULL),
+            failed => (true, false, text(failed)),
         };
-        row.push(Value::Boolean(applied));
-        row.push(Value::Boolean(passed));
-        row.push(list(failed));
+        row.push(ToSqlOutput::Borrowed(ValueRef::Boolean(applied)));
+        row.push(ToSqlOutput::Borrowed(ValueRef::Boolean(passed)));
+        row.push(failed);
 
-        self.append_info_values(record.info().as_ref(), row);
-        self.append_sample_values(record.samples().as_ref(), row)
+        self.push_info_values(info.as_ref(), &mut row);
+        self.push_sample_values(samples.as_ref(), &mut row)?;
+
+        appender.append_row(appender_params_from_iter(row))?;
+        Ok(())
     }
 
-    /// Append one list per INFO field: a flag is ["true"], a missing value is []
-    fn append_info_values(&self, info: &str, row: &mut Vec<Value>) {
-        let mut values: Vec<Vec<&str>> = vec![Vec::new(); self.info_fields.len()];
-        for entry in split(info, ';') {
+    /// Push one value per INFO field: a flag is "true", a missing value is NULL
+    fn push_info_values<'r>(&self, info: &'r str, row: &mut Vec<ToSqlOutput<'r>>) {
+        let base = row.len();
+        row.resize(base + self.info_fields.len(), NULL);
+        if matches!(info, "" | MISSING) {
+            return;
+        }
+        for entry in info.split(';') {
             let (key, value) = entry.split_once('=').unwrap_or((entry, "true"));
             if let Some(i) = self.info_fields.iter().position(|field| field == key) {
-                values[i] = split(value, ',');
+                row[base + i] = list_text(value);
             }
         }
-        row.extend(values.into_iter().map(list));
     }
 
-    /// Append one list per sample and FORMAT field: GT, when first, is a single value, a
-    /// missing value is []
-    fn append_sample_values(
+    /// Push one value per sample and FORMAT field: GT, when first, is kept as is, a missing value
+    /// is NULL
+    fn push_sample_values<'r>(
         &self,
-        samples: &str,
-        row: &mut Vec<Value>,
+        samples: &'r str,
+        row: &mut Vec<ToSqlOutput<'r>>,
     ) -> Result<(), Box<dyn Error>> {
         if self.sample_indices.is_empty() || self.format_fields.is_empty() {
             return Ok(());
         }
 
-        let mut columns = samples.split('\t');
-        let keys: Vec<&str> = columns
-            .next()
-            .map(|s| s.split(':').collect())
-            .unwrap_or_default();
-        let columns: Vec<&str> = columns.collect();
-        let key_indices: Vec<Option<usize>> = self
-            .format_fields
-            .iter()
-            .map(|field| keys.iter().position(|key| key == field))
-            .collect();
+        let keys = samples.split('\t').next().unwrap_or_default();
+        let key_count = keys.split(':').count();
+        let gt_first = keys.split(':').next() == Some(GT);
 
         for &sample_index in &self.sample_indices {
-            let values: Vec<&str> = columns
-                .get(sample_index)
-                .map(|s| s.split(':').collect())
+            let sample = samples
+                .split('\t')
+                .nth(1 + sample_index)
                 .unwrap_or_default();
-            if values.len() > keys.len() {
+            if sample.split(':').count() > key_count {
                 return Err(format!("too many genotype fields in {}", samples).into());
             }
-            for &key_index in &key_indices {
-                let value = match key_index.and_then(|k| values.get(k).map(|v| (k, *v))) {
-                    Some((0, gt)) if keys[0] == GT => vec![gt],
-                    Some((_, v)) => split(v, ','),
-                    None => Vec::new(),
-                };
-                row.push(list(value));
+            for field in &self.format_fields {
+                let key_index = keys.split(':').position(|key| key == field);
+                let value = key_index.and_then(|k| sample.split(':').nth(k).map(|v| (k, v)));
+                row.push(match value {
+                    Some((0, gt)) if gt_first => text(gt),
+                    Some((_, v)) => list_text(v),
+                    None => NULL,
+                });
             }
         }
         Ok(())
     }
 }
 
-/// Split a field into values, where an empty or missing (".") field has no values
-fn split(field: &str, delimiter: char) -> Vec<&str> {
-    match field {
-        "" | MISSING => Vec::new(),
-        _ => field.split(delimiter).collect(),
+const NULL: ToSqlOutput<'static> = ToSqlOutput::Borrowed(ValueRef::Null);
+
+/// Borrow text as a VARCHAR value
+fn text(s: &str) -> ToSqlOutput<'_> {
+    ToSqlOutput::Borrowed(ValueRef::Text(s.as_bytes()))
+}
+
+/// Borrow text for a list column, where an empty or missing (".") field is NULL, an empty list
+fn list_text(s: &str) -> ToSqlOutput<'_> {
+    match s {
+        "" | MISSING => NULL,
+        _ => text(s),
     }
 }
 
-/// Convert values to a VARCHAR[] list value
-fn list(values: Vec<&str>) -> Value {
-    Value::List(
-        values
-            .into_iter()
-            .map(|v| Value::Text(v.to_string()))
-            .collect(),
+/// Return SQL splitting a list column on the specified delimiter, with NULL as an empty list
+fn split_sql(column: &str, delimiter: char) -> String {
+    format!(
+        "coalesce(string_split({}, '{}'), []::VARCHAR[]) AS {}",
+        column, delimiter, column
     )
 }
 
@@ -243,10 +272,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_split() {
-        assert!(split("", ',').is_empty());
-        assert!(split(".", ',').is_empty());
-        assert_eq!(split("A", ','), vec!["A"]);
-        assert_eq!(split("A,C", ','), vec!["A", "C"]);
+    fn test_split_sql() {
+        assert_eq!(
+            split_sql("\"AF\"", ','),
+            "coalesce(string_split(\"AF\", ','), []::VARCHAR[]) AS \"AF\""
+        );
     }
 }

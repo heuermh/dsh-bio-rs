@@ -24,7 +24,7 @@
 use std::error::Error;
 use std::path::PathBuf;
 
-use duckdb::{Connection, DropBehavior, appender_params_from_iter};
+use duckdb::{Connection, DropBehavior};
 
 use noodles::vcf;
 
@@ -60,21 +60,20 @@ pub fn run(
         // create appender
         let mut appender = tx.appender("variants")?;
 
-        // append each vcf record, reusing a single record and row buffer
+        // append each vcf record, reusing a single record buffer
         let mut record = vcf::Record::default();
-        let mut row = Vec::new();
         while reader.read_record(&mut record)? != 0 {
-            table.append_row_values(&record, &mut row)?;
-            appender.append_row(appender_params_from_iter(row.drain(..)))?;
+            table.append_row(&record, &mut appender)?;
         }
     }
 
     // allow parallel, lower-memory copy
     db.execute_batch("SET preserve_insertion_order = false")?;
 
-    // copy to parquet
+    // copy to parquet, splitting list columns
     let copy_sql = format!(
-        "COPY variants TO {} (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
+        "COPY ({}) TO {} (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {}, PER_THREAD_OUTPUT)",
+        table.select_sql("variants"),
         sql::string_literal(&output_parquet_file)?,
         row_group_size
     );

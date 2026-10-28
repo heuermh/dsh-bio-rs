@@ -25,7 +25,7 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use duckdb::{Connection, DropBehavior, appender_params_from_iter};
+use duckdb::{Connection, DropBehavior};
 
 use noodles::vcf;
 
@@ -62,9 +62,8 @@ pub fn run(
     sql::string_literal(&output_parquet_file)?;
     fs::create_dir_all(&output_parquet_file)?;
 
-    // reuse a single record and row buffer across all partitions
+    // reuse a single record buffer across all partitions
     let mut record = vcf::Record::default();
-    let mut row = Vec::new();
 
     let mut rows: u64 = 0;
     let mut first_row: u64 = 0;
@@ -89,8 +88,7 @@ pub fn run(
                     done = true;
                     break;
                 }
-                vcf_table.append_row_values(&record, &mut row)?;
-                appender.append_row(appender_params_from_iter(row.drain(..)))?;
+                vcf_table.append_row(&record, &mut appender)?;
                 partition_rows += 1;
             }
             rows += partition_rows;
@@ -106,8 +104,8 @@ pub fn run(
                 partition_file.display()
             );
             db.execute_batch(&format!(
-                "COPY {} TO {} (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {})",
-                table,
+                "COPY ({}) TO {} (FORMAT 'parquet', COMPRESSION 'zstd', OVERWRITE_OR_IGNORE 1, ROW_GROUP_SIZE {})",
+                vcf_table.select_sql(&table),
                 sql::string_literal(&partition_file)?,
                 row_group_size
             ))?;
