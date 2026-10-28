@@ -25,17 +25,20 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use duckdb::{Connection, DropBehavior, params};
+use duckdb::{Connection, DropBehavior, appender_params_from_iter};
 
 use noodles::vcf;
 
 use log::info;
 
+use crate::cli::VcfColumnArgs;
+use crate::vcf_table::VcfTable;
 use crate::{input, sql};
 
 pub fn run(
     input_vcf_path: PathBuf,
     output_parquet_file: PathBuf,
+    columns: &VcfColumnArgs,
     row_group_size: u64,
     partition_size: u64,
 ) -> Result<(), Box<dyn Error>> {
@@ -49,25 +52,26 @@ pub fn run(
     // allow parallel, lower-memory copy
     db.execute_batch("SET preserve_insertion_order = false")?;
 
+    info!("Reading variants from {}", input_vcf_path.display());
+
+    // create vcf reader, reading the header first for sample names
+    let mut reader = vcf::io::Reader::new(input::open(&input_vcf_path)?);
+    let header = reader.read_header()?;
+    let vcf_table = VcfTable::new(&header, columns)?;
+
     sql::string_literal(&output_parquet_file)?;
     fs::create_dir_all(&output_parquet_file)?;
 
-    info!("Reading variants from {}", input_vcf_path.display());
-
-    // create vcf reader
-    let mut reader = vcf::io::Reader::new(input::open(&input_vcf_path)?);
-    reader.read_header()?;
-    let mut records = reader.records();
+    // reuse a single record and row buffer across all partitions
+    let mut record = vcf::Record::default();
+    let mut row = Vec::new();
 
     let mut rows: u64 = 0;
     let mut first_row: u64 = 0;
     loop {
         // create variants table for this partition
         let table = format!("v{}", first_row);
-        db.execute_batch(&format!(
-            "CREATE TABLE {} (chrom VARCHAR, pos LONG, ref VARCHAR, alt VARCHAR, qual DOUBLE, filters_applied BOOLEAN, filters_passed BOOLEAN, filters_failed VARCHAR[])",
-            table
-        ))?;
+        db.execute_batch(&vcf_table.create_table_sql(&table))?;
 
         let mut partition_rows: u64 = 0;
         let mut done = false;
@@ -81,31 +85,12 @@ pub fn run(
 
             // append vcf records until the partition is full
             while partition_rows < partition_size {
-                let Some(result) = records.next() else {
+                if reader.read_record(&mut record)? == 0 {
                     done = true;
                     break;
-                };
-                let record = result?;
-                let position = record.variant_start().transpose()?;
-                let chrom = record.reference_sequence_name();
-                let pos = position.map(usize::from).unwrap_or_default();
-                let reference = record.reference_bases();
-                let alt: Option<String> = None;
-                let qual: Option<String> = None;
-                let filters_applied: Option<bool> = None;
-                let filters_passed: Option<bool> = None;
-                let filters_failed: Option<String> = None;
-
-                appender.append_row(params![
-                    chrom,
-                    pos,
-                    reference,
-                    alt,
-                    qual,
-                    filters_applied,
-                    filters_passed,
-                    filters_failed
-                ])?;
+                }
+                vcf_table.append_row_values(&record, &mut row)?;
+                appender.append_row(appender_params_from_iter(row.drain(..)))?;
                 partition_rows += 1;
             }
             rows += partition_rows;

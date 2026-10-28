@@ -24,27 +24,34 @@
 use std::error::Error;
 use std::path::PathBuf;
 
-use duckdb::{Connection, DropBehavior, params};
+use duckdb::{Connection, DropBehavior, appender_params_from_iter};
 
 use noodles::vcf;
 
 use log::info;
 
+use crate::cli::VcfColumnArgs;
+use crate::vcf_table::VcfTable;
 use crate::{input, sql};
 
 pub fn run(
     input_vcf_path: PathBuf,
     output_parquet_file: PathBuf,
+    columns: &VcfColumnArgs,
     row_group_size: u64,
 ) -> Result<(), Box<dyn Error>> {
     let mut db = Connection::open_in_memory()?;
 
+    // create vcf reader, reading the header first for sample names
+    info!("Reading variants from {}", input_vcf_path.display());
+    let mut reader = vcf::io::Reader::new(input::open(&input_vcf_path)?);
+    let header = reader.read_header()?;
+    let table = VcfTable::new(&header, columns)?;
+
     // create variants table
     info!("Creating variants table");
-    let create_table_sql = "CREATE TABLE variants (chrom VARCHAR, pos LONG, ref VARCHAR, alt VARCHAR, qual DOUBLE, filters_applied BOOLEAN, filters_passed BOOLEAN, filters_failed VARCHAR[])";
-    db.execute_batch(create_table_sql)?;
+    db.execute_batch(&table.create_table_sql("variants"))?;
 
-    info!("Reading variants from {}", input_vcf_path.display());
     {
         // start transaction for appender
         let mut tx = db.transaction()?;
@@ -53,33 +60,12 @@ pub fn run(
         // create appender
         let mut appender = tx.appender("variants")?;
 
-        // create vcf reader
-        let mut reader = vcf::io::Reader::new(input::open(&input_vcf_path)?);
-        reader.read_header()?;
-
-        // append each vcf record
-        for result in reader.records() {
-            let record = result?;
-            let position = record.variant_start().transpose()?;
-            let chrom = record.reference_sequence_name();
-            let pos = position.map(usize::from).unwrap_or_default();
-            let reference = record.reference_bases();
-            let alt: Option<String> = None;
-            let qual: Option<String> = None;
-            let filters_applied: Option<bool> = None;
-            let filters_passed: Option<bool> = None;
-            let filters_failed: Option<String> = None;
-
-            appender.append_row(params![
-                chrom,
-                pos,
-                reference,
-                alt,
-                qual,
-                filters_applied,
-                filters_passed,
-                filters_failed
-            ])?;
+        // append each vcf record, reusing a single record and row buffer
+        let mut record = vcf::Record::default();
+        let mut row = Vec::new();
+        while reader.read_record(&mut record)? != 0 {
+            table.append_row_values(&record, &mut row)?;
+            appender.append_row(appender_params_from_iter(row.drain(..)))?;
         }
     }
 

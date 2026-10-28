@@ -28,6 +28,7 @@ mod fastq_to_parquet;
 mod fastq_to_partitioned_parquet;
 mod input;
 mod sql;
+mod vcf_table;
 mod vcf_to_parquet;
 mod vcf_to_partitioned_parquet;
 
@@ -91,6 +92,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             vcf_to_parquet::run(
                 args.input_vcf_path.unwrap(),
                 args.output_parquet_file,
+                &args.columns,
                 args.row_group_size,
             )?;
         }
@@ -98,6 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             vcf_to_partitioned_parquet::run(
                 args.input_vcf_path.unwrap(),
                 args.output_parquet_file,
+                &args.columns,
                 args.row_group_size,
                 args.partition_size,
             )?;

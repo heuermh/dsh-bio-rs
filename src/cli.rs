@@ -33,7 +33,7 @@ pub struct Cli {
     pub command: Command,
 
     /// Show additional logging messages (-v, -vv, -vvv)
-    #[arg(short, long, action = clap::ArgAction::Count, global = true)]
+    #[arg(short, long, action = clap::ArgAction::Count, global = true, display_order = 998)]
     pub verbose: u8,
 }
 
@@ -144,6 +144,9 @@ pub struct VcfToParquetArgs {
     #[arg(short, long, value_name = "PARQUET")]
     pub output_parquet_file: PathBuf,
 
+    #[command(flatten)]
+    pub columns: VcfColumnArgs,
+
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
@@ -159,6 +162,9 @@ pub struct VcfToPartitionedParquetArgs {
     #[arg(short, long, value_name = "PARQUET")]
     pub output_parquet_file: PathBuf,
 
+    #[command(flatten)]
+    pub columns: VcfColumnArgs,
+
     /// Row group size
     #[arg(short = 'g', long, default_value_t = 122880)]
     pub row_group_size: u64,
@@ -166,4 +172,36 @@ pub struct VcfToPartitionedParquetArgs {
     /// Partition size, in number of rows
     #[arg(short = 'p', long, default_value_t = 1228800, value_parser = clap::value_parser!(u64).range(1..))]
     pub partition_size: u64,
+}
+
+/// Optional columns for VCF conversion
+#[derive(Args)]
+pub struct VcfColumnArgs {
+    /// List of INFO fields to include, if any
+    #[arg(short = 'n', long, value_name = "FIELD", value_delimiter = ',')]
+    pub info_fields: Vec<String>,
+
+    /// Prefix for INFO field column names
+    #[arg(short = 'r', long, value_name = "PREFIX", default_value = "")]
+    pub info_prefix: String,
+
+    /// List of samples to include, if any
+    #[arg(short = 's', long, value_name = "SAMPLE", value_delimiter = ',')]
+    pub samples: Vec<String>,
+
+    /// Prefix for sample FORMAT field column names
+    #[arg(short = 'x', long, value_name = "PREFIX", default_value = "")]
+    pub sample_prefix: String,
+
+    /// List of FORMAT fields to include for each sample, if any
+    #[arg(short = 'f', long, value_name = "FIELD", value_delimiter = ',')]
+    pub format_fields: Vec<String>,
+
+    /// Lowercase fields and samples in column names
+    #[arg(short = 'w', long)]
+    pub lowercase: bool,
+
+    /// Allow multiallelic records
+    #[arg(short = 'm', long)]
+    pub multiallelic: bool,
 }

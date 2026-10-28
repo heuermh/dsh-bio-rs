@@ -32,6 +32,11 @@ pub fn string_literal(path: &Path) -> Result<String, Box<dyn Error>> {
     Ok(format!("'{}'", s.replace('\'', "''")))
 }
 
+/// Quote a name as a SQL identifier, doubling any double quotes
+pub fn identifier(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -44,6 +49,13 @@ mod tests {
             "'/data/bob''s run.parquet'"
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_identifier() {
+        assert_eq!(identifier("AF"), "\"AF\"");
+        assert_eq!(identifier("HG001-x"), "\"HG001-x\"");
+        assert_eq!(identifier("a\"b"), "\"a\"\"b\"");
     }
 
     #[cfg(unix)]
