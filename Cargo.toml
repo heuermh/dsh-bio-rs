@@ -10,7 +10,7 @@ duckdb = { version = "1.20000.0", features = ["bundled", "parquet"] }
 env_logger = "0.11.10"
 flate2 = { version = "1.1.9", features = ["zlib-rs"] }
 log = "0.4.29"
-noodles = { version = "0.118.0", features = ["bgzf", "fasta", "fastq", "vcf"] }
+noodles = { version = "0.119.0", features = ["bgzf", "fasta", "fastq", "vcf"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
